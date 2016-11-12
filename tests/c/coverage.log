@@ -1,0 +1,12 @@
+func: 
+{[e] covers: [a] [a.addr] [b] [d] [mul4] [add1] [add2] [mul3] }
+{[c] covers: [a] [a.addr] [add1] [mul] }
+{[cmp] covers: [a] [a.addr] [b] [add] [add1] }
+
+main: 
+{[c.i] covers: [a.addr.i] [mul.i] }
+{[argc.addr] covers: [argc] }
+{[argv.addr] covers: [argv] }
+{[a] covers: [mul3.i] [mul4.i] [a.addr.i] [b.i] [d.i] [e.i] [add.i] [add1.i] [add2.i] }
+{[cmp.i] covers: [a.addr.i] [b.i] [add.i] }
+
