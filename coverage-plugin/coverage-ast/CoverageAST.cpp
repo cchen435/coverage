@@ -24,6 +24,13 @@ using namespace clang;
 
 namespace {
 
+    // it stores an array access information, e.g. for ab[2*i+1]
+    // StringRef will store 'ab', Expr * will refer to the AST of 2*i+1
+    //typedef std::vector<std::pair<StringRef, Expr *>> VarList;
+    typedef enum { SCALA, ARRAY } ElemType;
+    typedef std::tuple<StringRef, std::string, ElemType> ElemExpr;
+    typedef std::vector<ElemExpr> VarList;
+
     class CoverageVisitor: public RecursiveASTVisitor<CoverageVisitor> {
     public:
         explicit CoverageVisitor(ASTContext *Context): Context(Context) {}
@@ -57,23 +64,34 @@ namespace {
             Stmt * st = func->getBody();
             DEBUG_WITH_TYPE("Coverage", st->viewAST());
             DEBUG_WITH_TYPE("Coverage", st->dump());
+            //DEBUG_WITH_TYPE("Coverage-AST",func->dump());
+            //DEBUG_WITH_TYPE("Coverage-AST", st->viewAST());
+            //func->dump();
+            //st->viewAST();
 
             //Handling function body, which is a CompoundStmt
             handleCompoundStmt(dyn_cast<CompoundStmt>(st));
             llvm::errs() << "\n\n";
-            func->dump();
-            st->viewAST();
 
             return true;
         }
 
     private:
         ASTContext *Context;
-        void handleStmt(Stmt *st);
         void handleCompoundStmt(CompoundStmt *st);
         void handleDeclStmt(DeclStmt *st);
+        VarList handleNonAssignBinOpStmt(BinaryOperator *st);
+        void handleAssignBinOpStmt(BinaryOperator *st);
         void handleBinOpStmt(BinaryOperator *st);
+        ElemExpr handleArraySubscriptExpr(ArraySubscriptExpr *st);
         void handleForStmt(ForStmt *st);
+        void handleIfStmt(IfStmt *st);
+        void handleWhileStmt(WhileStmt *st);
+        void printVarList(VarList result);
+        std::string getArrayIndexAsString(BinaryOperator * expr);
+        void printBinaryOp(BinaryOperator * expr);
+        // handleHSExpr is to handle either LHS or RHS of a Bin Operator;
+        VarList handleHSExpr(Expr * HS);
 
     };
 
@@ -125,50 +143,49 @@ namespace {
 static FrontendPluginRegistry::Add<CoverageAction>
         X("coverage", "calculate coverage map");
 
+void CoverageVisitor::handleCompoundStmt(CompoundStmt *st) {
+    assert(st != NULL);
+    //llvm::errs() << "Stmt size: " << st->size() << "\n";
+    int size = 0;
 
+    for (CompoundStmt::body_iterator it = st->body_begin(), end = st->body_end(); it != end; it++) {
+        size++;
+        Stmt * tmp = *it;
 
-void CoverageVisitor::handleStmt(Stmt *st) {
-    switch (st->getStmtClass()) {
         // ToDo: recheck what kinds of statements need to handle, currently focusing on array related binary operators
         // ToDo: DeclStmt may define new variables, need to save them to the final graph table;
-        case Stmt::DeclStmtClass:
-            DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a Decl statement.\n");
-            handleDeclStmt(dyn_cast<DeclStmt>(st));
-            break;
+        switch (tmp->getStmtClass()) {
+            case Stmt::DeclStmtClass:
+                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a Decl statement.\n");
+                handleDeclStmt(dyn_cast<DeclStmt>(tmp));
+                break;
+            case Stmt::BinaryOperatorClass:
+                handleBinOpStmt(dyn_cast<BinaryOperator>(tmp));
+                break;
+            case Stmt::IfStmtClass:
+                // it could have CompoundStmt, which in turn has ForStmt
+                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a If statement.\n");
+                //ToDo: adding code to handle if statement if necessary, currently just processing its body
+                handleIfStmt(dyn_cast<IfStmt>(tmp));
+                break;
+            case Stmt::ForStmtClass:
+                // Handle For loop statements, it has high probability to have array operations;
+                handleForStmt(dyn_cast<ForStmt>(tmp));
+                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a For statement.\n");
+                break;
+            case Stmt::WhileStmtClass:
+                handleWhileStmt(dyn_cast<WhileStmt>(tmp));
+                break;
+            case Stmt::CompoundAssignOperatorClass:
+                handleAssignBinOpStmt(dyn_cast<BinaryOperator>(tmp));
+                break;
+            default:
+                llvm::errs() << "statement not handled:" << tmp->getStmtClassName() << "\n";
+                //tmp->dump();
+                llvm::errs() << "\n";
+        }
 
-            // it could have CompoundStmt, which in turn has ForStmt
-        case Stmt::IfStmtClass:
-            DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a If statement.\n");
-            break;
-
-            // Most probability has array operations;
-        case Stmt::ForStmtClass:
-            handleForStmt(dyn_cast<ForStmt>(st));
-            DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a For statement.\n");
-            break;
-
-        case Stmt::CompoundStmtClass:
-            handleCompoundStmt(dyn_cast<CompoundStmt>(st));
-            break;
-
-            // This is for function call
-        case Stmt::CallExprClass:
-            break;
-
-            // Array Operations normally happens here
-        case Stmt::BinaryOperatorClass:
-            handleBinOpStmt(dyn_cast<BinaryOperator>(st));
-            break;
-
-        case Stmt::ArraySubscriptExprClass:
-            llvm::errs() << "\n\n Array Subscript Expr: \n";
-            st->dump();
-            llvm::errs() << "\n";
-            break;
-
-        default:
-            DEBUG_WITH_TYPE("Coverage-handleStmt",llvm::errs() << "meeting a statement:" << st->getStmtClassName() << "\n");
-            break;
+        //llvm::errs() << "\n";
     }
 }
 
@@ -191,10 +208,11 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
             // Function Parameter Variable declaration
             case Decl::ParmVar:
                 break;
-                // Local/Global Variable declaration.
+            // Local/Global Variable declaration.
             case Decl::Var:
                 var = dyn_cast<VarDecl>(declaration);
-                llvm::errs() << "new var (appending to table later):" << var->getName() << "\n";
+                // ToDo: append to hash table later
+                llvm::errs() << "new var:" << var->getName();
 
                 // Var declaration has initial value;
                 if (var->hasInit()) {
@@ -202,40 +220,40 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
                     switch (expr->getStmtClass()) {
                         // initial value is int/float/string/char constant
                         case Stmt::IntegerLiteralClass:
-                            llvm::errs() << "const (integer): ";
-                            dyn_cast<IntegerLiteral>(expr)->getValue().dump();
-                            llvm::errs() << "\n";
+                            llvm::errs() << " = "
+                                         << dyn_cast<IntegerLiteral>(expr)->getValue().getLimitedValue() << "\n";
                             break;
                         case Stmt::FloatingLiteralClass:
-                            llvm::errs() << "const (float): "
+                            llvm::errs() << " = "
                                          << dyn_cast<FloatingLiteral>(expr)->getValue().convertToFloat() << "\n";
                             break;
                         case Stmt::CharacterLiteralClass:
-                            llvm::errs() << "const (char): "
+                            llvm::errs() << " = "
                                          << dyn_cast<CharacterLiteral>(expr)->getValue() << "\n";
                             break;
                         case Stmt::StringLiteralClass:
-                            llvm::errs() << "const (String): "
+                            llvm::errs() << " = "
                                          << dyn_cast<StringLiteral>(expr)->getBytes() << "\n";
                             break;
 
                             // initializing with single variable. e.g. int i = j;
                         case Stmt::ImplicitCastExprClass:
                             declref = dyn_cast<DeclRefExpr>(dyn_cast<ImplicitCastExpr>(expr)->getSubExpr());
-                            llvm::errs() << "Expression: " << declref->getDecl()->getName() << "\n";
+                            llvm::errs() << " = " << declref->getDecl()->getName() << "\n";
                             break;
 
                             // initializing with expression. e.g. int i = j+k;
                         case Stmt::BinaryOperatorClass:
+                            llvm::errs() << " = ";
+                            printBinaryOp(dyn_cast<BinaryOperator>(expr));
+                            llvm::errs() << "\n";
                             handleBinOpStmt(dyn_cast<BinaryOperator>(expr));
                             break;
                         default:
                             llvm::errs() << "Unprocessed: \n";
                             expr->dump();
-                            llvm::errs() << "\n\n";
                     }
                 }
-
                 break;
                 // Skip other Declaration type, e.g. FunctionDel
             default:
@@ -244,12 +262,79 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
     }
 }
 
-void CoverageVisitor::handleBinOpStmt(BinaryOperator *st) {
-    Expr *LHS, *RHS;
-    VarDecl * LHSVar, * RHSVar;
-    DeclRefExpr *DeclLHS, *DeclRHS;
+// handle for loop, currently focus on loop body
+void CoverageVisitor::handleForStmt(ForStmt *st) {
+    // body of a for loop is also a CompoundStmt;
+    //llvm::errs() << "for body: " << st->getBody()->getStmtClass() << ", " << st->getBody()->getStmtClassName() << "\n\n";
+    CompoundStmt *body = dyn_cast<CompoundStmt>(st->getBody());
+    DEBUG_WITH_TYPE("Coverage", llvm::errs() << "For body:\n");
+    DEBUG_WITH_TYPE("Coverage", body->dump());
+    handleCompoundStmt(body);
+}
 
-    st->dump();
+// handle if statement, currently focus on then/else body
+void CoverageVisitor::handleIfStmt(IfStmt *st) {
+    // body of a for loop is also a CompoundStmt;
+    CompoundStmt *body;
+    if (st->getThen()) {
+        /*
+        llvm::errs() << "if-then: " << st->getThen()->getStmtClass() << ", "
+                     << st->getThen()->getStmtClassName() << "\n\n";
+        */
+        body = dyn_cast<CompoundStmt>(st->getThen());
+        DEBUG_WITH_TYPE("Coverage", llvm::errs() << "If then:\n");
+        DEBUG_WITH_TYPE("Coverage", body->dump());
+        handleCompoundStmt(body);
+    }
+
+    if (st->getElse()) {
+        /*
+        llvm::errs() << "if-else: " << st->getElse()->getStmtClass() << ", "
+                     << st->getElse()->getStmtClassName() << "\n\n";
+        */
+        body = dyn_cast<CompoundStmt>(st->getElse());
+        DEBUG_WITH_TYPE("Coverage", llvm::errs() << "If else:\n");
+        DEBUG_WITH_TYPE("Coverage", body->dump());
+        handleCompoundStmt(body);
+    }
+
+}
+
+// handle while loop, currently focus on while body
+void CoverageVisitor::handleWhileStmt(WhileStmt *st) {
+    //llvm::errs() << "while body: " << st->getBody()->getStmtClass() << ", " << st->getBody()->getStmtClassName() << "\n\n";
+    CompoundStmt *body = dyn_cast<CompoundStmt>(st->getBody());
+    DEBUG_WITH_TYPE("Coverage", llvm::errs() << "while body:\n");
+    DEBUG_WITH_TYPE("Coverage", body->dump());
+    handleCompoundStmt(body);
+
+}
+
+// handle assignment statement, it is called by handleBinOpStmt
+void CoverageVisitor::handleAssignBinOpStmt(BinaryOperator *st) {
+    VarList LHS, RHS;
+    LHS = handleHSExpr(st->getLHS());
+    RHS = handleHSExpr(st->getRHS());
+
+    printVarList(LHS);
+    llvm::errs() << " used:";
+    printVarList(RHS);
+    llvm::errs() << "\n";
+}
+
+// handle non-assignment statement, it is called by handleBinOpStmt and handleHSStmt
+VarList CoverageVisitor::handleNonAssignBinOpStmt(BinaryOperator *st) {
+    VarList LHS, RHS, ALL;
+    LHS = handleHSExpr(st->getLHS());
+    RHS = handleHSExpr(st->getRHS());
+    ALL.insert(ALL.end(), LHS.begin(), LHS.end());
+    ALL.insert(ALL.end(), RHS.begin(), RHS.end());
+    return ALL;
+}
+
+// handleBinOpStmt extracts operands in an stmt;
+void CoverageVisitor::handleBinOpStmt(BinaryOperator *st) {
+
     switch (st->getOpcode()) {
             // [C++ 5.5] Pointer-to-member operators.
         case BO_PtrMemD:
@@ -284,16 +369,7 @@ void CoverageVisitor::handleBinOpStmt(BinaryOperator *st) {
         case BO_LAnd:
             // [C99 6.5.14] Logical OR operator.
         case BO_LOr:
-            llvm::errs() << "Operator: " << st->getOpcodeStr();
-            LHS = st->getLHS();
-            RHS = st->getRHS();
-            DeclLHS = dyn_cast<DeclRefExpr>(dyn_cast<ImplicitCastExpr>(LHS)->getSubExpr());
-            DeclRHS = dyn_cast<DeclRefExpr>(dyn_cast<ImplicitCastExpr>(RHS)->getSubExpr());
-            LHSVar = dyn_cast<VarDecl>(DeclLHS->getDecl());
-            RHSVar = dyn_cast<VarDecl>(DeclRHS->getDecl());
-
-            llvm::errs() << "(LHS: " << LHSVar->getName() << "), " << "(RHS: " << RHSVar->getName() << ")\n\n";
-
+            handleNonAssignBinOpStmt(st);
             break;
 
             // [C99 6.5.16] Assignment operators.
@@ -308,42 +384,233 @@ void CoverageVisitor::handleBinOpStmt(BinaryOperator *st) {
         case BO_AndAssign:
         case BO_XorAssign:
         case BO_OrAssign:
-            LHS = st->getLHS();
-            LHSVar = dyn_cast<VarDecl>(dyn_cast<DeclRefExpr>(LHS)->getDecl());
-            RHS = st->getRHS();
-
-            llvm::errs() << "Operator: " << st->getOpcodeStr() << "\n";
-            llvm::errs() << "(LHS:" << LHSVar->getName() << "), (RHS:";
-
-            switch (RHS->getStmtClass()) {
-                case Stmt::BinaryOperatorClass:
-                    handleBinOpStmt(dyn_cast<BinaryOperator>(RHS));
-                    break;
-                default:
-                    RHS->dump();
-                    llvm::errs() << "\n\n";
-            }
-            llvm::errs() << ")\n\n";
+            handleAssignBinOpStmt(st);
             break;
-
         case BO_Comma:
             break;
     }
-    llvm::errs() << "-------------------\n\n";
-}
-void CoverageVisitor::handleForStmt(ForStmt *st) {
-    // body of a for loop is also a CompoundStmt;
-    CompoundStmt *body = dyn_cast<CompoundStmt>(st->getBody());
-    DEBUG_WITH_TYPE("Coverage", llvm::errs() << "For body:\n");
-    DEBUG_WITH_TYPE("Coverage", body->dump());
-    handleCompoundStmt(body);
 }
 
-void CoverageVisitor::handleCompoundStmt(CompoundStmt *st) {
-    assert(st != NULL);
-    for (CompoundStmt::body_iterator it = st->body_begin(), end = st->body_end();
-         it != end; it++) {
-        Stmt * tmp = *it;
-        handleStmt(tmp);
+// handleHSExpr: This function is to handle LHS and RHS of a binary
+// statement in the AST. This is not to handle array index, which will be
+// handled separately.
+VarList CoverageVisitor::handleHSExpr(Expr *HS) {
+    VarList variables;
+    ImplicitCastExpr *ImplicitExprTmp;
+    IntegerLiteral *IntTmp;
+    DeclRefExpr *DeclRefTmp;
+    VarDecl * HSVarTmp;
+    Expr * ExprTmp;
+    ElemExpr HSVar;
+
+    switch (HS->getStmtClass()) {
+        // normal mathematical calculation
+        // Simple Scala variable
+        case Stmt::DeclRefExprClass:
+            HSVarTmp = dyn_cast<VarDecl>(dyn_cast<DeclRefExpr>(HS)->getDecl());
+            HSVar = std::make_tuple(HSVarTmp->getName(), "", SCALA);
+            variables.push_back(HSVar);
+            break;
+        // array element: e.g. a[2*i+1]
+        case Stmt::ArraySubscriptExprClass:
+            HSVar = handleArraySubscriptExpr(dyn_cast<ArraySubscriptExpr>(HS));
+            variables.push_back(HSVar);
+            break;
+        // array or scala variable is wrapped inside implicit cast
+        case Stmt::ImplicitCastExprClass:
+            ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(HS);
+            ExprTmp = ImplicitExprTmp->getSubExpr();
+            if (isa<ArraySubscriptExpr>(ExprTmp)) {
+                HSVar = handleArraySubscriptExpr(dyn_cast<ArraySubscriptExpr>(ExprTmp));
+            } else if (isa<DeclRefExpr>(ImplicitExprTmp->getSubExpr())) {
+                DeclRefTmp = dyn_cast<DeclRefExpr>(ExprTmp);
+                HSVarTmp = dyn_cast<VarDecl>(DeclRefTmp->getDecl());
+                HSVar = std::make_tuple(HSVarTmp->getName(), "", SCALA);
+            } else {
+                llvm::errs() << "Unprocessed Expression: \n";
+                ExprTmp->dump();
+                llvm::errs() << "\n";
+            }
+            variables.push_back(HSVar);
+            break;
+        // constant integer
+        case Stmt::IntegerLiteralClass:
+            IntTmp = dyn_cast<IntegerLiteral>(HS);
+            HSVar = std::make_tuple(IntTmp->getValue().toString(10, true), "", SCALA);
+            variables.push_back(HSVar);
+            break;
+        // further binary operators;
+        case Stmt::BinaryOperatorClass:
+            if (dyn_cast<BinaryOperator>(HS)->isAssignmentOp()) {
+                llvm::errs() << "case such as a=b=c=4.0 has not been handled well\n";
+                handleAssignBinOpStmt(dyn_cast<BinaryOperator>(HS));
+            } else {
+                variables = handleNonAssignBinOpStmt(dyn_cast<BinaryOperator>(HS));
+            }
+            break;
+        default:
+            llvm::errs() << "Other operand in Assign: \n";
+            HS->dump();
+            llvm::errs() << "\n";
+    }
+
+    return variables;
+
+}
+
+ElemExpr CoverageVisitor::handleArraySubscriptExpr(ArraySubscriptExpr *st) {
+    StringRef name;
+    std::string index;
+    ImplicitCastExpr *ImplicitExprTmp;
+    DeclRefExpr *DeclRefTmp;
+    Expr * ExprTmp;
+    ElemExpr element;
+
+    // get LHS, normally it is array name
+    ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(st->getLHS());
+    DeclRefTmp= dyn_cast<DeclRefExpr>(ImplicitExprTmp->getSubExpr());
+    name = dyn_cast<VarDecl>(DeclRefTmp->getDecl())->getName();
+
+    // get RHS, normally it is array index, it could be simple variable, e.g. i,
+    // or expression, e.g. 2*i+1;
+    ExprTmp = st->getRHS();
+    if (isa<ImplicitCastExpr>(ExprTmp)) {
+        ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(ExprTmp);
+        DeclRefTmp= dyn_cast<DeclRefExpr>(ImplicitExprTmp->getSubExpr());
+        index = dyn_cast<VarDecl>(DeclRefTmp->getDecl())->getName().str();
+    } else if (isa<BinaryOperator>(ExprTmp)) {
+        index = getArrayIndexAsString(dyn_cast<BinaryOperator>(ExprTmp));
+    }
+    element = std::make_tuple(name, index, ARRAY);
+    return element;
+}
+
+
+
+
+
+
+void CoverageVisitor::printVarList(VarList result) {
+    int i, size = result.size();
+    llvm::errs() << "(";
+    for ( i = 0; i < size; i++) {
+        //llvm::errs() << result[i].get(0);
+        llvm::errs() << std::get<0>(result[i]);
+        if (std::get<2>(result[i]) == ARRAY) {
+            //llvm::errs() << "[" << result[i].get(1) << "]";
+            llvm::errs() << "[" << std::get<1>(result[i]) << "]";
+        }
+        if ( i < size - 1) {
+            llvm::errs() << ",";
+        }
+    }
+    llvm::errs() <<  ")";
+}
+
+std::string CoverageVisitor::getArrayIndexAsString(BinaryOperator *expr) {
+    Expr *LHS, *RHS, *tmp;
+    DeclRefExpr * DeclRefTmp;
+    VarDecl *var;
+    IntegerLiteral * IntTmp;
+    std::string index;
+
+    LHS = expr->getLHS();
+
+    switch(LHS->getStmtClass()) {
+        case Expr::ImplicitCastExprClass:
+            tmp = dyn_cast<ImplicitCastExpr>(LHS)->getSubExpr();
+            DeclRefTmp = dyn_cast<DeclRefExpr>(tmp);
+            var = dyn_cast<VarDecl>(DeclRefTmp->getDecl());
+            //llvm::errs() << var->getName();
+            index += var->getName().str();
+            break;
+        case Expr::IntegerLiteralClass:
+            IntTmp = dyn_cast<IntegerLiteral>(LHS);
+            //llvm::errs() << IntTmp->getValue().getLimitedValue();
+            index += IntTmp->getValue().toString(10, true);
+            break;
+        case Expr::BinaryOperatorClass:
+            index += getArrayIndexAsString(dyn_cast<BinaryOperator>(LHS));
+            break;
+        default:
+            llvm::errs() << "PrintBinOp:\n";
+            LHS->dump();
+            llvm::errs() << "\n";
+    }
+    //llvm::errs() << expr->getOpcodeStr();
+    index += expr->getOpcodeStr().str();
+
+    RHS = expr->getRHS();
+    switch(RHS->getStmtClass()) {
+        case Expr::ImplicitCastExprClass:
+            tmp = dyn_cast<ImplicitCastExpr>(RHS)->getSubExpr();
+            DeclRefTmp = dyn_cast<DeclRefExpr>(tmp);
+            var = dyn_cast<VarDecl>(DeclRefTmp->getDecl());
+            //llvm::errs() << var->getName();
+            index += var->getName().str();
+            break;
+        case Expr::IntegerLiteralClass:
+            IntTmp = dyn_cast<IntegerLiteral>(RHS);
+            index += IntTmp->getValue().toString(10, true);
+            break;
+        case Expr::BinaryOperatorClass:
+            index += getArrayIndexAsString(dyn_cast<BinaryOperator>(RHS));
+            break;
+        default:
+            llvm::errs() << "PrintBinOp:\n";
+            LHS->dump();
+            llvm::errs() << "\n";
+    }
+    return index;
+}
+
+// printBinaryOp is to print mathematical expressions e.g. 2*i+1
+void CoverageVisitor::printBinaryOp(BinaryOperator *expr) {
+    Expr *LHS, *RHS, *tmp;
+    DeclRefExpr * DeclRefTmp;
+    VarDecl *var;
+    IntegerLiteral * IntTmp;
+    LHS = expr->getLHS();
+
+    switch(LHS->getStmtClass()) {
+        case Expr::ImplicitCastExprClass:
+            tmp = dyn_cast<ImplicitCastExpr>(LHS)->getSubExpr();
+            DeclRefTmp = dyn_cast<DeclRefExpr>(tmp);
+            var = dyn_cast<VarDecl>(DeclRefTmp->getDecl());
+            llvm::errs() << var->getName();
+            break;
+        case Expr::IntegerLiteralClass:
+            IntTmp = dyn_cast<IntegerLiteral>(LHS);
+            llvm::errs() << IntTmp->getValue().getLimitedValue();
+            break;
+        case Expr::BinaryOperatorClass:
+            printBinaryOp(dyn_cast<BinaryOperator>(LHS));
+            break;
+        default:
+            llvm::errs() << "PrintBinOp:\n";
+            LHS->dump();
+            llvm::errs() << "\n";
+    }
+    llvm::errs() << expr->getOpcodeStr();
+
+    RHS = expr->getRHS();
+    switch(RHS->getStmtClass()) {
+        case Expr::ImplicitCastExprClass:
+            tmp = dyn_cast<ImplicitCastExpr>(RHS)->getSubExpr();
+            DeclRefTmp = dyn_cast<DeclRefExpr>(tmp);
+            var = dyn_cast<VarDecl>(DeclRefTmp->getDecl());
+            llvm::errs() << var->getName();
+            break;
+        case Expr::IntegerLiteralClass:
+            IntTmp = dyn_cast<IntegerLiteral>(RHS);
+            llvm::errs() << IntTmp->getValue().getLimitedValue();
+            break;
+        case Expr::BinaryOperatorClass:
+            printBinaryOp(dyn_cast<BinaryOperator>(RHS));
+            break;
+        default:
+            llvm::errs() << "PrintBinOp:\n";
+            LHS->dump();
+            llvm::errs() << "\n";
     }
 }
