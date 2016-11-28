@@ -212,7 +212,7 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
             case Decl::Var:
                 var = dyn_cast<VarDecl>(declaration);
                 // ToDo: append to hash table later
-                llvm::errs() << "new var:" << var->getName();
+                llvm::errs() << "new var:  " << var->getName();
 
                 // Var declaration has initial value;
                 if (var->hasInit()) {
@@ -221,32 +221,31 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
                         // initial value is int/float/string/char constant
                         case Stmt::IntegerLiteralClass:
                             llvm::errs() << " = "
-                                         << dyn_cast<IntegerLiteral>(expr)->getValue().getLimitedValue() << "\n";
+                                         << dyn_cast<IntegerLiteral>(expr)->getValue().getLimitedValue();
                             break;
                         case Stmt::FloatingLiteralClass:
                             llvm::errs() << " = "
-                                         << dyn_cast<FloatingLiteral>(expr)->getValue().convertToFloat() << "\n";
+                                         << dyn_cast<FloatingLiteral>(expr)->getValue().convertToFloat();
                             break;
                         case Stmt::CharacterLiteralClass:
                             llvm::errs() << " = "
-                                         << dyn_cast<CharacterLiteral>(expr)->getValue() << "\n";
+                                         << dyn_cast<CharacterLiteral>(expr)->getValue();
                             break;
                         case Stmt::StringLiteralClass:
                             llvm::errs() << " = "
-                                         << dyn_cast<StringLiteral>(expr)->getBytes() << "\n";
+                                         << dyn_cast<StringLiteral>(expr)->getBytes();
                             break;
 
                             // initializing with single variable. e.g. int i = j;
                         case Stmt::ImplicitCastExprClass:
                             declref = dyn_cast<DeclRefExpr>(dyn_cast<ImplicitCastExpr>(expr)->getSubExpr());
-                            llvm::errs() << " = " << declref->getDecl()->getName() << "\n";
+                            llvm::errs() << " = " << declref->getDecl()->getName();
                             break;
 
                             // initializing with expression. e.g. int i = j+k;
                         case Stmt::BinaryOperatorClass:
                             llvm::errs() << " = ";
                             printBinaryOp(dyn_cast<BinaryOperator>(expr));
-                            llvm::errs() << "\n";
                             handleBinOpStmt(dyn_cast<BinaryOperator>(expr));
                             break;
                         default:
@@ -254,6 +253,7 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
                             expr->dump();
                     }
                 }
+                llvm::errs() << "\n";
                 break;
                 // Skip other Declaration type, e.g. FunctionDel
             default:
@@ -319,7 +319,8 @@ void CoverageVisitor::handleAssignBinOpStmt(BinaryOperator *st) {
     printVarList(LHS);
     llvm::errs() << " used:";
     printVarList(RHS);
-    llvm::errs() << "\n";
+    llvm::errs() << "(isRvalue: " << st->isRValue() << ", Type: "
+                 << st->getType().getCanonicalType()->getTypeClassName() << ")\n";
 }
 
 // handle non-assignment statement, it is called by handleBinOpStmt and handleHSStmt
@@ -465,6 +466,13 @@ ElemExpr CoverageVisitor::handleArraySubscriptExpr(ArraySubscriptExpr *st) {
     DeclRefExpr *DeclRefTmp;
     Expr * ExprTmp;
     ElemExpr element;
+
+    llvm::errs() << "ArraySubscriptExpr\nbase:\n";
+    st->getBase()->dump();
+    llvm::errs() << "; index:\n";
+    st->getIdx()->dump();
+    llvm::errs() << "\n\n\n";
+
 
     // get LHS, normally it is array name
     ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(st->getLHS());
