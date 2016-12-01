@@ -7,3 +7,7 @@ int add(int a[], int b[], int c[], int size) {
 
 	return 0;
 }
+
+int main(int argc, char **argv) {
+    return 0;
+}

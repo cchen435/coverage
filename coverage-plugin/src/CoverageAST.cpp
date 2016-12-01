@@ -35,46 +35,7 @@ namespace {
     public:
         explicit CoverageVisitor(ASTContext *Context): Context(Context) {}
 
-        bool VisitFunctionDecl(FunctionDecl *func) {
-            std::string funcName = func->getNameInfo().getName().getAsString();
-            llvm::errs() << funcName << "(";
-            int param_size = func->getNumParams();
-
-            // ToDo: parameter defines variable used in the function, need to save them to graph table
-            for (int i = 0; i < param_size; i++) {
-                ParmVarDecl *param = func->getParamDecl(i);
-                std::string p_name = param->getNameAsString();
-                llvm::errs() << p_name;
-                if (i < param_size - 1) {
-                    llvm::errs() << ", ";
-                } else {
-                    llvm::errs() << "):\n";
-                }
-            }
-
-            if (!func->hasBody()) {
-                llvm::errs() << "declaration, no body\n";
-                return true;
-            }
-
-            // ToDo: handle the function body,
-            // The body is a CompoundStmt, which contains multiple other statements,
-            // e.g. DeclStmt, ForStmt, ReturnStmt etc. Clang has around 40 types of statements
-            // see here: http://clang.llvm.org/doxygen/classclang_1_1Stmt.html
-            Stmt * st = func->getBody();
-            DEBUG_WITH_TYPE("Coverage", st->viewAST());
-            DEBUG_WITH_TYPE("Coverage", st->dump());
-            //DEBUG_WITH_TYPE("Coverage-AST",func->dump());
-            //DEBUG_WITH_TYPE("Coverage-AST", st->viewAST());
-            //func->dump();
-            //st->viewAST();
-
-            //Handling function body, which is a CompoundStmt
-            handleCompoundStmt(dyn_cast<CompoundStmt>(st));
-            llvm::errs() << "\n\n";
-
-            return true;
-        }
+        bool VisitFunctionDecl(FunctionDecl *func);
 
     private:
         ASTContext *Context;
@@ -116,7 +77,7 @@ namespace {
         bool ParseArgs(const CompilerInstance &CI,
                        const std::vector<std::string>& args) {
             for (unsigned i = 0, e = args.size(); i != e; ++i) {
-                llvm::errs() << "Coverage arg = " << args[i] << "\n";
+                //llvm::errs() << "Coverage arg = " << args[i] << "\n";
 
                 // Example error handling.
                 if (args[i] == "-an-error") {
@@ -143,10 +104,52 @@ namespace {
 static FrontendPluginRegistry::Add<CoverageAction>
         X("coverage", "calculate coverage map");
 
+bool CoverageVisitor::VisitFunctionDecl(FunctionDecl *func) {
+    std::string funcName = func->getNameInfo().getName().getAsString();
+    llvm::errs() << funcName << "(";
+    int param_size = func->getNumParams();
+
+    // ToDo: parameter defines variable used in the function, need to save them to graph table
+    for (int i = 0; i < param_size; i++) {
+        ParmVarDecl *param = func->getParamDecl(i);
+        std::string p_name = param->getNameAsString();
+        llvm::errs() << p_name;
+        if (i < param_size - 1) {
+            llvm::errs() << ", ";
+        } else {
+            llvm::errs() << "):\n";
+        }
+    }
+
+    if (!func->hasBody()) {
+        llvm::errs() << "declaration, no body\n";
+        return true;
+    }
+
+    // ToDo: handle the function body,
+    // The body is a CompoundStmt, which contains multiple other statements,
+    // e.g. DeclStmt, ForStmt, ReturnStmt etc. Clang has around 40 types of statements
+    // see here: http://clang.llvm.org/doxygen/classclang_1_1Stmt.html
+    Stmt * st = func->getBody();
+    DEBUG_WITH_TYPE("Coverage", st->viewAST());
+    DEBUG_WITH_TYPE("Coverage", st->dump());
+    //DEBUG_WITH_TYPE("Coverage-AST",func->dump());
+    //DEBUG_WITH_TYPE("Coverage-AST", st->viewAST());
+    //func->dump();
+    //st->viewAST();
+
+    //Handling function body, which is a CompoundStmt
+    handleCompoundStmt(dyn_cast<CompoundStmt>(st));
+    llvm::errs() << "\n\n";
+
+    return true;
+}
+
 void CoverageVisitor::handleCompoundStmt(CompoundStmt *st) {
     assert(st != NULL);
     //llvm::errs() << "Stmt size: " << st->size() << "\n";
     int size = 0;
+    if (st == NULL) return;
 
     for (CompoundStmt::body_iterator it = st->body_begin(), end = st->body_end(); it != end; it++) {
         size++;
@@ -156,31 +159,34 @@ void CoverageVisitor::handleCompoundStmt(CompoundStmt *st) {
         // ToDo: DeclStmt may define new variables, need to save them to the final graph table;
         switch (tmp->getStmtClass()) {
             case Stmt::DeclStmtClass:
-                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a Decl statement.\n");
+                llvm::errs() << "meeting a Decl statement.\n";
                 handleDeclStmt(dyn_cast<DeclStmt>(tmp));
                 break;
             case Stmt::BinaryOperatorClass:
+                llvm::errs() << "meeting a binary statement.\n";
                 handleBinOpStmt(dyn_cast<BinaryOperator>(tmp));
                 break;
             case Stmt::IfStmtClass:
                 // it could have CompoundStmt, which in turn has ForStmt
-                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a If statement.\n");
+                llvm::errs() << "meeting a If statement.\n";
                 //ToDo: adding code to handle if statement if necessary, currently just processing its body
                 handleIfStmt(dyn_cast<IfStmt>(tmp));
                 break;
             case Stmt::ForStmtClass:
                 // Handle For loop statements, it has high probability to have array operations;
+                llvm::errs() << "meeting a For statement.\n";
                 handleForStmt(dyn_cast<ForStmt>(tmp));
-                DEBUG_WITH_TYPE("Coverage-handleStmt", llvm::errs() << "meeting a For statement.\n");
                 break;
             case Stmt::WhileStmtClass:
+                llvm::errs() << "meeting a while statement.\n";
                 handleWhileStmt(dyn_cast<WhileStmt>(tmp));
                 break;
             case Stmt::CompoundAssignOperatorClass:
+                llvm::errs() << "meeting a binary assign statement.\n";
                 handleAssignBinOpStmt(dyn_cast<BinaryOperator>(tmp));
                 break;
             default:
-                llvm::errs() << "statement not handled:" << tmp->getStmtClassName() << "\n";
+                llvm::errs() << "statement not handled: " << tmp->getStmtClassName() << "\n";
                 //tmp->dump();
                 llvm::errs() << "\n";
         }
@@ -265,7 +271,7 @@ void CoverageVisitor::handleDeclStmt(DeclStmt *st) {
 // handle for loop, currently focus on loop body
 void CoverageVisitor::handleForStmt(ForStmt *st) {
     // body of a for loop is also a CompoundStmt;
-    //llvm::errs() << "for body: " << st->getBody()->getStmtClass() << ", " << st->getBody()->getStmtClassName() << "\n\n";
+    // llvm::errs() << "For Body: " << st->getBody()->getStmtClass() << ", " << st->getBody()->getStmtClassName() << "\n\n";
     CompoundStmt *body = dyn_cast<CompoundStmt>(st->getBody());
     DEBUG_WITH_TYPE("Coverage", llvm::errs() << "For body:\n");
     DEBUG_WITH_TYPE("Coverage", body->dump());
@@ -316,11 +322,21 @@ void CoverageVisitor::handleAssignBinOpStmt(BinaryOperator *st) {
     LHS = handleHSExpr(st->getLHS());
     RHS = handleHSExpr(st->getRHS());
 
+    //llvm::errs() << "BinAssign Debug:\n";
     printVarList(LHS);
     llvm::errs() << " used:";
     printVarList(RHS);
-    llvm::errs() << "(isRvalue: " << st->isRValue() << ", Type: "
-                 << st->getType().getCanonicalType()->getTypeClassName() << ")\n";
+    llvm::errs() << "\n";
+    /*
+    llvm::errs() << " (isRvalue: " << st->isRValue() << ", Type: "
+                 << st->getType().getCanonicalType()->getTypeClassName() << ");\n";
+    llvm::errs() << "( OCL_Strong: " << Qualifiers::OCL_Strong << ")\n";
+    llvm::errs() << "( OCL_Autoreleasing: " << Qualifiers::OCL_Autoreleasing << ")\n";
+    llvm::errs() << "( OCL_ExplicitNone: " << Qualifiers::OCL_ExplicitNone << ")\n";
+    llvm::errs() << "( OCL_None: " << Qualifiers::OCL_None << ")\n";
+    llvm::errs() << "( OCL_Weak: " << Qualifiers::OCL_Weak << ")\n";
+    llvm::errs() << "( ObjClifetime: " << st->getLHS()->getType().getObjCLifetime() << ")\n\n";
+     */
 }
 
 // handle non-assignment statement, it is called by handleBinOpStmt and handleHSStmt
@@ -420,6 +436,7 @@ VarList CoverageVisitor::handleHSExpr(Expr *HS) {
         // array or scala variable is wrapped inside implicit cast
         case Stmt::ImplicitCastExprClass:
             ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(HS);
+            //llvm::errs() << "ImplicitCastExpr Debug: " << ImplicitExprTmp->getCastKindName() << "\n\n\n";
             ExprTmp = ImplicitExprTmp->getSubExpr();
             if (isa<ArraySubscriptExpr>(ExprTmp)) {
                 HSVar = handleArraySubscriptExpr(dyn_cast<ArraySubscriptExpr>(ExprTmp));
@@ -443,7 +460,7 @@ VarList CoverageVisitor::handleHSExpr(Expr *HS) {
         // further binary operators;
         case Stmt::BinaryOperatorClass:
             if (dyn_cast<BinaryOperator>(HS)->isAssignmentOp()) {
-                llvm::errs() << "case such as a=b=c=4.0 has not been handled well\n";
+                //llvm::errs() << "case such as a=b=c=4.0 has not been handled well\n";
                 handleAssignBinOpStmt(dyn_cast<BinaryOperator>(HS));
             } else {
                 variables = handleNonAssignBinOpStmt(dyn_cast<BinaryOperator>(HS));
@@ -467,12 +484,10 @@ ElemExpr CoverageVisitor::handleArraySubscriptExpr(ArraySubscriptExpr *st) {
     Expr * ExprTmp;
     ElemExpr element;
 
-    llvm::errs() << "ArraySubscriptExpr\nbase:\n";
+    llvm::errs() << "array base : \n";
     st->getBase()->dump();
-    llvm::errs() << "; index:\n";
+    llvm::errs() << "array index : \n";
     st->getIdx()->dump();
-    llvm::errs() << "\n\n\n";
-
 
     // get LHS, normally it is array name
     ImplicitExprTmp = dyn_cast<ImplicitCastExpr>(st->getLHS());
@@ -490,13 +505,11 @@ ElemExpr CoverageVisitor::handleArraySubscriptExpr(ArraySubscriptExpr *st) {
         index = getArrayIndexAsString(dyn_cast<BinaryOperator>(ExprTmp));
     }
     element = std::make_tuple(name, index, ARRAY);
+    ASTMetadata metadata(index);
+    st->setMetaData(metadata);
+    llvm::errs() << name << " has metadata: " << st->hasMetaData() << "\n";
     return element;
 }
-
-
-
-
-
 
 void CoverageVisitor::printVarList(VarList result) {
     int i, size = result.size();

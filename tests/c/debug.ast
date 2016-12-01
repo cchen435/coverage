@@ -1,0 +1,94 @@
+add(a, b, c, size):
+FunctionDecl 0x7f8675800f20 <debug.c:1:1, line:9:1> line:1:5 add 'int (int *, int *, int *, int)'
+|-ParmVarDecl 0x7f8675800c70 <col:9, col:15> col:13 used a 'int *':'int *'
+|-ParmVarDecl 0x7f8675800cf0 <col:18, col:24> col:22 used b 'int *':'int *'
+|-ParmVarDecl 0x7f8675800d70 <col:27, col:33> col:31 used c 'int *':'int *'
+|-ParmVarDecl 0x7f8675800de0 <col:36, col:40> col:40 size 'int'
+`-CompoundStmt 0x7f867502cc28 <col:46, line:9:1>
+  |-DeclStmt 0x7f867502c858 <line:3:5, col:10>
+  | `-VarDecl 0x7f867502c800 <col:5, col:9> col:9 used i 'int'
+  |-BinaryOperator 0x7f867502c8b8 <line:5:5, col:9> 'int' '='
+  | |-DeclRefExpr 0x7f867502c870 <col:5> 'int' lvalue Var 0x7f867502c800 'i' 'int'
+  | `-IntegerLiteral 0x7f867502c898 <col:9> 'int' 4
+  |-BinaryOperator 0x7f867502cbc0 <line:6:5, col:26> 'int' '='
+  | |-ArraySubscriptExpr 0x7f867502c960 <col:5, col:8> 'int' lvalue
+  | | |-ImplicitCastExpr 0x7f867502c930 <col:5> 'int *':'int *' <LValueToRValue>
+  | | | `-DeclRefExpr 0x7f867502c8e0 <col:5> 'int *':'int *' lvalue ParmVar 0x7f8675800d70 'c' 'int *':'int *'
+  | | `-ImplicitCastExpr 0x7f867502c948 <col:7> 'int' <LValueToRValue>
+  | |   `-DeclRefExpr 0x7f867502c908 <col:7> 'int' lvalue Var 0x7f867502c800 'i' 'int'
+  | `-BinaryOperator 0x7f867502cb98 <col:12, col:26> 'int' '+'
+  |   |-ImplicitCastExpr 0x7f867502cb68 <col:12, col:15> 'int' <LValueToRValue>
+  |   | `-ArraySubscriptExpr 0x7f867502ca08 <col:12, col:15> 'int' lvalue
+  |   |   |-ImplicitCastExpr 0x7f867502c9d8 <col:12> 'int *':'int *' <LValueToRValue>
+  |   |   | `-DeclRefExpr 0x7f867502c988 <col:12> 'int *':'int *' lvalue ParmVar 0x7f8675800c70 'a' 'int *':'int *'
+  |   |   `-ImplicitCastExpr 0x7f867502c9f0 <col:14> 'int' <LValueToRValue>
+  |   |     `-DeclRefExpr 0x7f867502c9b0 <col:14> 'int' lvalue Var 0x7f867502c800 'i' 'int'
+  |   `-ImplicitCastExpr 0x7f867502cb80 <col:19, col:26> 'int' <LValueToRValue>
+  |     `-ArraySubscriptExpr 0x7f867502cb40 <col:19, col:26> 'int' lvalue
+  |       |-ImplicitCastExpr 0x7f867502cb28 <col:19> 'int *':'int *' <LValueToRValue>
+  |       | `-DeclRefExpr 0x7f867502ca30 <col:19> 'int *':'int *' lvalue ParmVar 0x7f8675800cf0 'b' 'int *':'int *'
+  |       `-BinaryOperator 0x7f867502cb00 <col:21, col:25> 'int' '+'
+  |         |-BinaryOperator 0x7f867502cab8 <col:21, col:23> 'int' '*'
+  |         | |-IntegerLiteral 0x7f867502ca58 <col:21> 'int' 2
+  |         | `-ImplicitCastExpr 0x7f867502caa0 <col:23> 'int' <LValueToRValue>
+  |         |   `-DeclRefExpr 0x7f867502ca78 <col:23> 'int' lvalue Var 0x7f867502c800 'i' 'int'
+  |         `-IntegerLiteral 0x7f867502cae0 <col:25> 'int' 1
+  `-ReturnStmt 0x7f867502cc08 <line:8:2, col:9>
+    `-IntegerLiteral 0x7f867502cbe8 <col:9> 'int' 0
+new var:  i
+(i) used:(4) (isRvalue: 0, Type: Builtin);
+( OCL_Strong: 2)
+( OCL_Autoreleasing: 4)
+( OCL_ExplicitNone: 1)
+( OCL_None: 0)
+( OCL_Weak: 3)
+( ObjClifetime: 0)
+
+ArraySubscriptExpr
+base:
+ImplicitCastExpr 0x7f867502c930 'int *':'int *' <LValueToRValue>
+`-DeclRefExpr 0x7f867502c8e0 'int *':'int *' lvalue ParmVar 0x7f8675800d70 'c' 'int *':'int *'
+; index:
+ImplicitCastExpr 0x7f867502c948 'int' <LValueToRValue>
+`-DeclRefExpr 0x7f867502c908 'int' lvalue Var 0x7f867502c800 'i' 'int'
+
+
+
+Cast Kind Debug: LValueToRValue
+ArraySubscriptExpr
+base:
+ImplicitCastExpr 0x7f867502c9d8 'int *':'int *' <LValueToRValue>
+`-DeclRefExpr 0x7f867502c988 'int *':'int *' lvalue ParmVar 0x7f8675800c70 'a' 'int *':'int *'
+; index:
+ImplicitCastExpr 0x7f867502c9f0 'int' <LValueToRValue>
+`-DeclRefExpr 0x7f867502c9b0 'int' lvalue Var 0x7f867502c800 'i' 'int'
+
+
+
+Cast Kind Debug: LValueToRValue
+ArraySubscriptExpr
+base:
+ImplicitCastExpr 0x7f867502cb28 'int *':'int *' <LValueToRValue>
+`-DeclRefExpr 0x7f867502ca30 'int *':'int *' lvalue ParmVar 0x7f8675800cf0 'b' 'int *':'int *'
+; index:
+BinaryOperator 0x7f867502cb00 'int' '+'
+|-BinaryOperator 0x7f867502cab8 'int' '*'
+| |-IntegerLiteral 0x7f867502ca58 'int' 2
+| `-ImplicitCastExpr 0x7f867502caa0 'int' <LValueToRValue>
+|   `-DeclRefExpr 0x7f867502ca78 'int' lvalue Var 0x7f867502c800 'i' 'int'
+`-IntegerLiteral 0x7f867502cae0 'int' 1
+
+
+
+(c[i]) used:(a[i],b[2*i+1]) (isRvalue: 0, Type: Builtin);
+( OCL_Strong: 2)
+( OCL_Autoreleasing: 4)
+( OCL_ExplicitNone: 1)
+( OCL_None: 0)
+( OCL_Weak: 3)
+( ObjClifetime: 0)
+
+statement not handled:ReturnStmt
+
+
+
