@@ -113,24 +113,24 @@ void Coverage::dump() {
 }
 
 void Coverage::handleBinOp(Instruction *I) {
-    // iterate over each operand in the instruction
-    for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end(); OI != OE; OI++) {
-        Instruction *op = dyn_cast<Instruction>(OI);
-        errs() << "has metadata: " << op->hasMetadata() << "\n\n";
+    int NumOperands = I->getNumOperands();
 
-#if 0
-        if (op->hasMetadata()) {
+    // iterate over each operand in the instruction
+    // for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end(); OI != OE; OI++) {
+    for (int i = 0; i < NumOperands; i++) {
+        // Instruction *op = dyn_cast<Instruction>(OI);
+        Value *V = I->getOperand(i);
+        Instruction *op = dyn_cast<Instruction>(V);
+
+        if (!isa<Constant>(V) && op->hasMetadata()) {
             MDNode *md = op->getMetadata("coverage");
             StringRef index = dyn_cast<MDString>(md->getOperand(0))->getString();
-            DMap.insert(I, dyn_cast<Value>(OI), index);
+            //errs() << "insert: [";  I->print(errs()); errs() << "], ["; OI->get()->print(errs()); errs() << "]";
+            DMap.insert(I, V, index);
         } else {
-            DMap.insert(I, dyn_cast<Value>(OI));
+            DMap.insert(I, V);
+            //errs() << "insert: [";  I->print(errs()); errs() << "], ["; OI->get()->print(errs()); errs() << "]";
         }
-#else
-        errs() << "insert: [";  I->print(errs()); errs() << "], ["; OI->get()->print(errs()); errs() << "]";
-        DMap.insert(I, dyn_cast<Value>(OI));
-#endif
-
     }
 }
 

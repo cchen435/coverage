@@ -23,9 +23,15 @@ void DependMap::dump() {
         errs() << count << ": [" << key->getName() << "] Covers -- ";
         for (std::vector<NodeType>::iterator b = value.begin(), e = value.end(); b != e; b++) {
             if (b->first->hasName()) {
-                errs() << "[" << b->first->getName() << "]";
+                if (b->second.size())
+                    errs() << "[" << b->first->getName() << " (" << b->second << ") ]";
+                else
+                    errs() << "[" << b->first->getName() << " ]";
             } else {
-                errs() << "["; b->first->print(errs()); errs() << "]";
+                if (b->second.size()) {
+                    errs() << "["; b->first->print(errs()); errs() << " (" << b->second << ") ]";
+                } else
+                    errs() << "["; b->first->print(errs()); errs() << "]";
             }
             if (b+1 < e) {
                 errs() << ", ";

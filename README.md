@@ -1,15 +1,6 @@
-# llvm-pass-skeleton
-
-A completely useless LLVM pass.
-
-Build:
-
-    $ cd llvm-pass-skeleton
-    $ mkdir build
-    $ cd build
-    $ cmake ..
-    $ make
-    $ cd ..
+# Coverage
+an llvm pass and clang plugin to statically ananylyze relationships
+among variables using data flow analysis
 
 Run:
 

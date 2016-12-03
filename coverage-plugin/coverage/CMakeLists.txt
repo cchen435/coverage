@@ -1,12 +1,3 @@
-# If we don't need RTTI or EH, there's no reason to export anything
-# from the plugin.
-cmake_minimum_required(VERSION 3.4.3)
-
-find_package(LLVM REQUIRED CONFIG)
-include_directories(${LLVM_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
-link_directories(${LLVM_LIBRARY_DIRS})
-
 add_library(CoverageAST MODULE CoverageAST.cpp)
 
 target_compile_features(CoverageAST PRIVATE cxx_range_for cxx_auto_type)
